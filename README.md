@@ -1,4 +1,4 @@
-# Jump Gateway
+# UMAXICA Jump Gateway
 
 Jump Gateway is a Hono-only, stateless redirect trust broker for `https://jump.example.net/?rt=<JWT>`.
 
