@@ -1,0 +1,11 @@
+manifest_version = 3
+name = "jump-gateway"
+description = "Stateless Jump Gateway for FQDN redirect trust brokering."
+authors = ["jump@example.net"]
+language = "javascript"
+
+[scripts]
+build = "mkdir -p bin && vp exec esbuild src/fastly.ts --bundle --format=esm --target=es2022 --outfile=bin/index.js --external:fastly:* && vp exec js-compute-runtime --module-mode --enable-aot bin/index.js bin/main.wasm"
+
+[local_server]
+[local_server.backends]

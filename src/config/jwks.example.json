@@ -1,0 +1,28 @@
+{
+  "keys": [
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "fastly-active-2026-05",
+      "alg": "EdDSA",
+      "use": "sig",
+      "x": "11qYAYKxCrfVS_3__XJ0Pqne0Wdcg4y3Md0DHCz9N7U"
+    },
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "cloudflare-active-2026-05",
+      "alg": "EdDSA",
+      "use": "sig",
+      "x": "hSDwCYkwp1R0i33ctD73Wg2_OgH3nr0I_N9nEwB2T8M"
+    },
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "fastly-grace-2026-04",
+      "alg": "EdDSA",
+      "use": "sig",
+      "x": "S1ru_zrY7aN35xLXsSE3mcbM_-tQyrfQVpGUAJvEChs"
+    }
+  ]
+}

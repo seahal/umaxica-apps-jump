@@ -1,5 +1,7 @@
 dist
 sandbox
+bin/
+pkg/
 
 # Cloudflare Workers
 worker

@@ -1,7 +1,19 @@
 name: umaxica-apps-jump-dc
 services:
   core:
-    ports: !override []
+    ports: !override
+      - '7676:7676' # jump/fastly
+      - '8787:8787' # jump/cloudflare
+      - '5101:5101' # com/apex
+      - '5102:5102' # com/core
+      - '5106:5106' # com/post
+      - '5201:5201' # net/apex
+      - '5301:5301' # org/apex
+      - '5302:5302' # org/core
+      - '5306:5306' # org/post
+      - '5401:5401' # app/apex
+      - '5402:5402' # app/core
+      - '5406:5406' # app/post
     environment:
       - DEVCONTAINER=1
     restart: unless-stopped

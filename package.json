@@ -4,19 +4,24 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
-    "build:apex:check": "XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-/tmp} pnpm -r --filter ./app/apex --filter ./com/apex --filter ./net/apex --filter ./org/apex run build",
     "format": "pnpm exec oxfmt --write .",
     "formach:check": "pnpm exec oxfmt --check .",
+    "cf:check": "wrangler deploy --dry-run --outdir dist/cloudflare",
+    "cf:dev": "wrangler dev --local --ip 0.0.0.0 --port 8787",
+    "fastly:build": "fastly compute build",
+    "fastly:serve": "fastly compute serve --addr 0.0.0.0:7676",
+    "fastly:serve:watch": "fastly compute serve --addr 0.0.0.0:7676 --watch",
     "lint": "pnpm exec oxlint --type-aware --type-check --fix .",
     "lint:check": "pnpm exec oxlint --type-aware --type-check .",
-    "type": "pnpm -r --if-present --filter ./app/apex --filter ./com/apex --filter ./org/apex --filter ./net/apex run type",
+    "type": "tsc -p tsconfig.json --noEmit",
     "typecheck": "pnpm run type",
     "test": "vp test run",
     "test:cov": "vp test run --coverage",
     "prepare": "vp config"
   },
   "dependencies": {
+    "@fastly/hono-fastly-compute": "^0.3.10",
+    "@fastly/js-compute": "^3.42.1",
     "hono": "^4.12.22",
     "jose": "^6.2.3",
     "tailwindcss": "^4.3.0"
@@ -24,6 +29,7 @@
   "devDependencies": {
     "@babel/preset-typescript": "^7.28.5",
     "@cloudflare/vite-plugin": "^1.38.0",
+    "@cloudflare/workers-types": "catalog:",
     "@tailwindcss/vite": "^4.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

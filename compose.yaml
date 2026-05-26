@@ -21,6 +21,8 @@ services:
         volume:
           nocopy: true
     ports:
+      - '7676:7676' # jump/fastly
+      - '8787:8787' # jump/cloudflare
       - '5101:5101' # com/apex
       - '5102:5102' # com/core
       - '5106:5106' # com/post

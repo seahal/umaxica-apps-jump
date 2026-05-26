@@ -14,9 +14,18 @@
   },
 
   "forwardPorts": [
-    5173, 8780, 8781, 8782, 5102, 5103, 5104, 5105, 5302, 5303, 5304, 5305, 5402, 5403, 5404, 5405
+    5173, 7676, 8780, 8781, 8782, 8787, 5102, 5103, 5104, 5105, 5302, 5303, 5304, 5305, 5402, 5403,
+    5404, 5405
   ],
   "portsAttributes": {
+    "7676": {
+      "label": "Jump Fastly Compute",
+      "onAutoForward": "notify"
+    },
+    "8787": {
+      "label": "Jump Cloudflare Workers",
+      "onAutoForward": "notify"
+    },
     "8781": {
       "label": "App Domain (app)",
       "onAutoForward": "notify"
