@@ -1,6 +1,7 @@
 import { importPKCS8 } from 'jose';
 import { createApp } from './index';
-import { JoseOutboundSigner, NoopOutboundSigner } from './core/sign_outbound';
+import { JoseOutboundSigner, NoopOutboundSigner, type OutboundSigner } from './core/sign_outbound';
+import type { OutboundJumpClaim } from './core/types';
 
 const CLOUDFLARE_VERSION_TAG = 'UMAXICA-APPS-EDGE-JUMP-VERSION';
 
@@ -29,6 +30,7 @@ export default {
   async fetch(request: Request, env: CloudflareEnv, executionContext: ExecutionContext) {
     const rateLimit = await checkRateLimit(request, env);
     if (rateLimit) return rateLimit;
+    const url = new URL(request.url);
 
     const app = createApp({
       runtime: {
@@ -39,11 +41,15 @@ export default {
           CLOUDFLARE_VERSION_TAG,
         production: true,
       },
-      signer: await createSigner(env),
+      signer: shouldSignJump(url) ? createSigner(env) : new NoopOutboundSigner(),
     });
     return app.fetch(request, env, executionContext);
   },
 };
+
+function shouldSignJump(url: URL) {
+  return url.pathname === '/' && url.searchParams.has('rt');
+}
 
 async function checkRateLimit(request: Request, env: CloudflareEnv) {
   const rateLimiter = env.RATE_LIMITER || env.ratelimit;
@@ -54,13 +60,40 @@ async function checkRateLimit(request: Request, env: CloudflareEnv) {
   return new Response(`429 Failure - rate limit exceeded for ${pathname}`, { status: 429 });
 }
 
-async function createSigner(env: CloudflareEnv) {
-  const pem = await readBinding(env.JUMP_PRIVATE_KEY_PEM || env.UMAXICA_JUMP_PRIVATE_KEY_PEM);
+function createSigner(env: CloudflareEnv) {
+  return new LazyCloudflareSigner(env);
+}
+
+class LazyCloudflareSigner implements OutboundSigner {
+  readonly kid = 'jump-current';
+  private signer: OutboundSigner | null = null;
+
+  constructor(private readonly env: CloudflareEnv) {}
+
+  async sign(claim: OutboundJumpClaim) {
+    return (await this.loadSigner()).sign(claim);
+  }
+
+  private async loadSigner() {
+    if (this.signer) return this.signer;
+    this.signer = await createJoseSigner(this.env);
+    return this.signer;
+  }
+}
+
+async function createJoseSigner(env: CloudflareEnv) {
+  const pem = await readPrivateKeyPem(env);
   if (!pem) return new NoopOutboundSigner();
-  const kid =
-    (await readBinding(env.JUMP_PRIVATE_KEY_KID || env.UMAXICA_JUMP_PRIVATE_KEY_KID)) ||
-    'jump-current';
+  const kid = (await readPrivateKeyKid(env)) || 'jump-current';
   return new JoseOutboundSigner(await importPKCS8(pem, 'EdDSA'), kid);
+}
+
+async function readPrivateKeyPem(env: CloudflareEnv) {
+  return readBinding(env.UMAXICA_JUMP_PRIVATE_KEY_PEM ?? env.JUMP_PRIVATE_KEY_PEM);
+}
+
+async function readPrivateKeyKid(env: CloudflareEnv) {
+  return readBinding(env.UMAXICA_JUMP_PRIVATE_KEY_KID ?? env.JUMP_PRIVATE_KEY_KID);
 }
 
 async function readBinding(binding: SecretBinding | undefined) {

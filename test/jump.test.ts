@@ -1,6 +1,7 @@
 import { exportJWK, generateKeyPair, jwtVerify, SignJWT, type JWK } from 'jose';
 import { describe, expect, test } from 'vite-plus/test';
 import { createApp, detectRuntime, fetchExampleJwks } from '../src';
+import cloudflareWorker from '../src/cloudflare';
 import { handleJump, type JumpDeps } from '../src/core/handle_jump';
 import { healthJson, wantsJson } from '../src/core/health';
 import { JwksCache } from '../src/core/jwks_cache';
@@ -100,6 +101,17 @@ async function jump(app: Fixture['app'], rt: string) {
   return app.request(`https://jump.example.net/?rt=${rt}`);
 }
 
+async function fetchCloudflareWorker(
+  path: string,
+  env: Parameters<typeof cloudflareWorker.fetch>[1],
+) {
+  return cloudflareWorker.fetch(
+    new Request(`https://jump.example.net${path}`),
+    env,
+    {} as ExecutionContext,
+  );
+}
+
 describe('jump gateway routes', () => {
   test('default app serves local health data', async () => {
     const app = createApp();
@@ -163,6 +175,22 @@ describe('jump gateway routes', () => {
     expect(await (await app.request('https://jump.example.net/robots.txt')).text()).toBe(
       'User-agent: *\nDisallow: /\nAllow: /about\n',
     );
+  });
+
+  test('cloudflare worker serves robots without importing private key', async () => {
+    const res = await fetchCloudflareWorker('/robots.txt', {
+      UMAXICA_JUMP_PRIVATE_KEY_PEM: 'not a pkcs8 key',
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('User-agent: *\nDisallow: /\nAllow: /about\n');
+  });
+
+  test('cloudflare worker serves health without importing private key', async () => {
+    const res = await fetchCloudflareWorker('/health.json', {
+      UMAXICA_JUMP_PRIVATE_KEY_PEM: 'not a pkcs8 key',
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true, edge: 'cloudflare' });
   });
 
   test('security headers are applied to static and well-known responses', async () => {
