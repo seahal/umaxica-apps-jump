@@ -1,4 +1,6 @@
 import { importPKCS8 } from 'jose';
+import { registry as umaxicaRegistry } from './config/registry.umaxica';
+import { fetchRegistryJwks } from './core/fetch_jwks';
 import { createApp } from './index';
 import { JoseOutboundSigner, NoopOutboundSigner, type OutboundSigner } from './core/sign_outbound';
 import type { OutboundJumpClaim } from './core/types';
@@ -31,6 +33,8 @@ export default {
     const url = new URL(request.url);
 
     const app = createApp({
+      registry: umaxicaRegistry,
+      fetchJwks: fetchRegistryJwks,
       runtime: {
         edge: 'cloudflare',
         version: cloudflareRevision(env),
