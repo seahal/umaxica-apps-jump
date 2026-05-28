@@ -32,7 +32,7 @@ export type JumpDeps = {
   outboundTtl?: number;
 };
 
-const DEFAULT_OUTBOUND_TTL = 60;
+const DEFAULT_OUTBOUND_TTL = 30;
 
 export type AuditLog = (entry: JumpAuditLogEntry) => void;
 

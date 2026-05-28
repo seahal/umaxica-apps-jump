@@ -43,7 +43,7 @@ JWT compact JWS gives issuers a portable signed redirect decision. JWKS lets Jum
 
 Jump uses no cookies, DB, or sessions. The JWT contains the redirect decision, expiry, issuer, audience, `jti`, destination type, and URL. Stateless validation keeps Fastly Compute and Cloudflare Workers behavior simple and resilient.
 
-Replay cache is optional and best-effort. Correctness comes from signature, claim, and policy validation, not from shared storage.
+Jump does not track `jti` consumption and does not perform replay detection. Replay defense is the receiving party's responsibility; see [security: Replay Detection](security.md#replay-detection). Correctness in Jump comes from signature, claim, and policy validation.
 
 ## Active-Active Edge
 
@@ -58,7 +58,7 @@ flowchart TB
   cloudflare --> dest
 ```
 
-Fastly and Cloudflare can both serve traffic. Runtime-specific code belongs in adapters; core logic uses Web Standard APIs where possible. Isolate-local caches are acceptable because JWKS and replay state do not require cross-edge consistency.
+Fastly and Cloudflare can both serve traffic. Runtime-specific code belongs in adapters; core logic uses Web Standard APIs where possible. Isolate-local JWKS caches are acceptable because cross-edge consistency is not a correctness requirement; replay state is not held in Jump at all.
 
 ## Why No Cookies
 

@@ -13,21 +13,6 @@ type PageProps = {
   now?: Date;
 };
 
-export function renderHomePage(locale: Locale = 'ja', now = new Date()) {
-  const t = messages[locale];
-  return renderDocument({
-    title: t.homeTitle,
-    locale,
-    now,
-    children: (
-      <main>
-        <h1>{t.aboutTitle}</h1>
-        <p>{t.aboutDescription}</p>
-      </main>
-    ),
-  });
-}
-
 export function renderAboutPage(
   locale: Locale = 'ja',
   serviceOrigin: string = PRODUCTION_SERVICE_ORIGIN,

@@ -2,6 +2,7 @@ import { exportJWK, importJWK, importPKCS8, jwtVerify, SignJWT, type JWK } from 
 import { registry as umaxicaRegistry } from './config/registry.umaxica';
 import { fetchRegistryJwks } from './core/fetch_jwks';
 import { createApp } from './index';
+import { NoopReplayCache } from './core/replay_cache';
 import { JoseOutboundSigner, NoopOutboundSigner, type OutboundSigner } from './core/sign_outbound';
 import { JumpError, PRODUCTION_SERVICE_ORIGIN, type OutboundJumpClaim } from './core/types';
 import { parseJumpJwks, type JumpJwks } from './core/jump_jwks';
@@ -48,6 +49,9 @@ export default {
         version: cloudflareRevision(env),
         production: true,
       },
+      // Worker isolates do not share state; jti replay detection is delegated to the
+      // Rails issuer's database. See adr/0002-security-review-rails-handshake.md (H1).
+      replayCache: new NoopReplayCache(),
       signer: shouldSignJump(url) ? createSigner(env, jumpJwks) : new NoopOutboundSigner(),
     });
     return app.fetch(request, env, executionContext);
@@ -67,7 +71,8 @@ async function checkRateLimit(request: Request, env: CloudflareEnv) {
   const rateLimiter = env.RATE_LIMITER || env.ratelimit;
   if (!rateLimiter) return null;
   const { pathname } = new URL(request.url);
-  const { success } = await rateLimiter.limit({ key: pathname });
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const { success } = await rateLimiter.limit({ key: `${clientIp}|${pathname}` });
   if (success) return null;
   return new Response(`429 Failure - rate limit exceeded for ${pathname}`, { status: 429 });
 }
@@ -77,15 +82,12 @@ function createSigner(env: CloudflareEnv, jumpJwks: JumpJwks | undefined) {
 }
 
 class LazyCloudflareSigner implements OutboundSigner {
-  readonly kid: string;
   private loading: Promise<OutboundSigner> | null = null;
 
   constructor(
     private readonly env: CloudflareEnv,
     private readonly jumpJwks: JumpJwks | undefined,
-  ) {
-    this.kid = readStringBindingSync(env.UMAXICA_JUMP_PRIVATE_KEY_KID ?? env.JUMP_PRIVATE_KEY_KID);
-  }
+  ) {}
 
   async sign(claim: OutboundJumpClaim) {
     return (await this.loadSigner()).sign(claim);
@@ -163,10 +165,6 @@ async function readBinding(binding: SecretBinding | undefined) {
   if (!binding) return null;
   if (typeof binding === 'string') return binding;
   return binding.get();
-}
-
-function readStringBindingSync(binding: SecretBinding | undefined) {
-  return typeof binding === 'string' ? binding.trim() || 'unloaded' : 'unloaded';
 }
 
 async function assertPrivateKeyMatchesPublicJwk(

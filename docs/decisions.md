@@ -28,9 +28,9 @@ Jump is an edge HTTP service, not a frontend app. The initial implementation sho
 
 P-384 keys are small, fast, and map cleanly to EC JWKs with `alg: ES384`.
 
-## Why Replay Cache Is Optional?
+## Why Jump Does Not Detect Replay?
 
-Shared replay state would add cross-edge consistency and availability concerns. `exp`, `jti`, signature validation, and policy validation are mandatory; replay cache is defense-in-depth.
+Replay defense belongs at the receiving boundary, where the destination application holds the local session, context, and downstream effects needed to decide accept or reject. Jump's job ends at signature, claim, and policy validation. Holding replay state at the edge would be isolate-local, race-prone, and redundant with the receiving party's check. Jump signs `jti` into the token so the receiving party can implement single-use, N-use, or unrestricted-within-`exp` policies; Jump itself records nothing.
 
 ## Why No Opaque Tokens?
 

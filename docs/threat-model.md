@@ -29,9 +29,9 @@ Limitations: Users can still choose to continue.
 
 Impact: A copied `rt` may be reused until expiry.
 
-Mitigation: `exp`, required random `jti`, and optional replay cache.
+Mitigation: `exp` bounds the usable window. The signed `jti` claim is provided so that the **receiving party** can enforce its own consumption policy (single-use, N-uses, or unrestricted) at its own boundary, backed by its own storage.
 
-Limitations: Replay cache is edge-local and best-effort.
+Limitations: Jump does not perform replay detection. If the receiving party does not enforce `jti` consumption, any copy of `rt` is usable until `exp`. See [security: Replay Detection](security.md#replay-detection).
 
 ### Referer Leakage
 
@@ -107,8 +107,8 @@ Limitations: Tokens signed before detection may have been used.
 
 ### Edge Cache Inconsistency
 
-Impact: Fastly and Cloudflare may briefly have different JWKS or replay cache state.
+Impact: Fastly and Cloudflare may briefly have different JWKS cache state during key rotation.
 
-Mitigation: JWKS includes active and grace keys. Replay cache is not a correctness dependency.
+Mitigation: JWKS includes active and grace keys; isolate-local caches refresh on signature failure with `forceRefresh`. Jump holds no replay state, so cross-edge consistency only needs to cover JWKS.
 
 Limitations: Propagation delay must be accounted for during rotation.

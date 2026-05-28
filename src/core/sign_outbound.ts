@@ -5,13 +5,12 @@ type SignKey = Parameters<SignJWT['sign']>[0];
 
 export interface OutboundSigner {
   sign(claim: OutboundJumpClaim): Promise<string>;
-  readonly kid: string;
 }
 
 export class JoseOutboundSigner implements OutboundSigner {
   constructor(
     private readonly privateKey: SignKey,
-    readonly kid: string,
+    private readonly kid: string,
     private readonly alg = 'ES384',
   ) {}
 
@@ -23,8 +22,6 @@ export class JoseOutboundSigner implements OutboundSigner {
 }
 
 export class NoopOutboundSigner implements OutboundSigner {
-  readonly kid = 'noop';
-
   async sign(): Promise<string> {
     throw new JumpError('signer_unavailable', 'outbound signer not configured');
   }

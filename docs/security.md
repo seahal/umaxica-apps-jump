@@ -29,15 +29,19 @@ OpenRedirect bugs let attackers create trusted-looking links that send users to 
 
 ## Why jti Exists
 
-`jti` makes every token unique even when the destination is the same. This supports best-effort replay detection and avoids deterministic tokens appearing repeatedly in logs or history.
+`jti` makes every token unique even when the destination is the same. It exists so that the **receiving party** (the destination application that consumes the return `rt`) can implement its own replay policy — for example, single-use, N-uses, or unrestricted within `exp`. Jump itself does not track `jti` usage; see "Replay Detection" below.
 
 ## Why exp Exists
 
 `exp` bounds token lifetime. Default TTL is 14 days. Maximum TTL is 30 days. Leeway is 60 seconds.
 
-## Replay Cache
+## Replay Detection
 
-Replay cache is optional and best-effort. It may be edge-local and inconsistent between Fastly and Cloudflare. It reduces accidental or local repeated use, but verification and policy checks remain the authority.
+**Jump does not perform replay detection.** It does not record which `jti` values have been consumed, and it will accept the same valid `rt` repeatedly within its `exp` window. This is intentional architecture, not a limitation: Jump's responsibility ends at signature, claim, and policy validation.
+
+Replay defense — including deciding whether a `jti` may be used once, N times, or unrestricted within `exp` — is the **receiving party's** responsibility. The receiving party verifies the return `rt` via JWKS, validates `url`/`aud`/`iss`/`src`/`dst`/`exp`, and then applies its own `jti` consumption policy backed by its own storage (DB, Redis, etc.). Expired tokens must be rejected.
+
+The reason for placing replay defense at the receiving boundary is that the receiving party holds the local session, context, and downstream side effects needed to make the accept/reject decision. Edge replay state in Jump would be isolate-local, race-prone, and redundant with the receiving party's own check. The Cloudflare runtime therefore wires `NoopReplayCache` explicitly.
 
 ## JWT Schema Version
 
@@ -79,6 +83,6 @@ Key rotation, compromise response, and key state definitions live in [key rotati
 
 - Jump cannot prevent a user from copying a URL with `rt`.
 - Jump cannot make URL-visible JWTs confidential.
-- Best-effort replay cache is not globally consistent.
+- Jump does not detect replay; receiving parties must enforce their own `jti` policy.
 - External cushion pages reduce phishing risk but cannot eliminate it.
 - Issuer key compromise requires operational rotation and revocation.

@@ -203,7 +203,7 @@ describe('jump gateway routes', () => {
     ]);
     expect(umaxicaRegistry['https://id.umaxica.app']).toMatchObject({
       jwks_uri: 'https://id.umaxica.app/.well-known/jwks.json',
-      allowed_dst_internal: ['https://www.umaxica.app'],
+      allowed_dst_internal: ['https://id.umaxica.app', 'https://www.umaxica.app'],
       allowed_dst_external: false,
     });
     for (const issuer of Object.values(umaxicaRegistry)) {
@@ -228,9 +228,13 @@ describe('jump gateway routes', () => {
       await expect(fetchRegistryJwks(issuer)).resolves.toEqual({
         keys: [{ kid: 'kid-1' }],
       });
-      expect(fetchMock).toHaveBeenCalledWith('https://id.umaxica.app/.well-known/jwks.json', {
-        headers: { Accept: 'application/json' },
-      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://id.umaxica.app/.well-known/jwks.json',
+        expect.objectContaining({
+          headers: { Accept: 'application/json' },
+          signal: expect.any(AbortSignal),
+        }),
+      );
     } finally {
       globalThis.fetch = previousFetch;
     }
@@ -254,15 +258,20 @@ describe('jump gateway routes', () => {
     }
   });
 
-  test('GET / renders home page when rt is absent', async () => {
+  test('GET / redirects to about when rt is absent', async () => {
     const { app } = await fixture();
     const res = await app.request('https://jump.example.net/');
-    const body = await res.text();
 
-    expect(res.status).toBe(200);
-    expect(body).toContain('<title>UMAXICA Jump Gateway</title>');
-    expect(body).toContain('<header><a href="/">UMAXICA</a></header>');
-    expect(body).toContain('<footer>© 2026 UMAXICA</footer>');
+    expect(res.status).toBe(302);
+    expect(res.headers.get('Location')).toBe('/about');
+  });
+
+  test('GET / processes invalid rt query parameters through guardrails', async () => {
+    const { app } = await fixture();
+    const res = await app.request('https://jump.example.net/?rt=abc.def');
+
+    expect(res.status).toBe(400);
+    expect(res.headers.get('X-Jump-Error')).toBe('malformed');
   });
 
   test('health JSON and HTML include runtime data', async () => {
@@ -514,6 +523,69 @@ describe('jump gateway routes', () => {
     } finally {
       setup.restore();
       info.mockRestore();
+    }
+  });
+
+  test('cloudflare worker live rails acme app handshake contract stays stable', async () => {
+    const setup = await cloudflareInternalRedirectFixture();
+    try {
+      const env = {
+        UMAXICA_JUMP_PRIVATE_KEY_PEM: setup.jumpPrivatePem,
+        UMAXICA_JUMP_PRIVATE_KEY_KID: 'cloudflare-active-2026-05',
+      };
+      const res = await fetchCloudflareWorker(`/?rt=${setup.inboundToken}`, env);
+
+      expect(res.status).toBe(302);
+      expect(res.headers.get('X-Jump-Error')).toBeNull();
+      const location = res.headers.get('Location');
+      expect(location).toBeTruthy();
+      const locationUrl = new URL(location ?? '');
+      expect(locationUrl.origin).toBe('https://www.umaxica.app');
+      expect(locationUrl.pathname).toBe('/');
+      expect(locationUrl.searchParams.getAll('rt')).toHaveLength(1);
+      expect(locationUrl.searchParams.has('jump_rt')).toBe(false);
+      expect(locationUrl.searchParams.has('jump_probe')).toBe(false);
+
+      const returnedRt = locationUrl.searchParams.get('rt') ?? '';
+      expect(decodeProtectedHeader(returnedRt)).toEqual({
+        typ: 'JWT',
+        alg: 'ES384',
+        kid: 'cloudflare-active-2026-05',
+      });
+
+      const jwksRes = await fetchCloudflareWorker('/.well-known/jwks.json', env);
+      expect(jwksRes.status).toBe(200);
+      const jwks = (await jwksRes.json()) as { keys: JWK[] };
+      expect(jwks.keys).toHaveLength(1);
+      expect(jwks.keys[0]).toMatchObject({
+        kid: 'cloudflare-active-2026-05',
+        kty: 'EC',
+        crv: 'P-384',
+        alg: 'ES384',
+        use: 'sig',
+      });
+      expect(jwks.keys[0]).not.toHaveProperty('d');
+
+      const verified = await jwtVerify(returnedRt, await importJWK(jwks.keys[0] ?? {}, 'ES384'), {
+        issuer: 'https://jump.umaxica.net',
+        audience: 'https://www.umaxica.app',
+        algorithms: ['ES384'],
+        typ: 'JWT',
+        currentDate: new Date(),
+      });
+      locationUrl.searchParams.delete('rt');
+      expect(locationUrl.href).toBe('https://www.umaxica.app/');
+      expect(verified.payload).toMatchObject({
+        schema: 1,
+        iss: 'https://jump.umaxica.net',
+        aud: 'https://www.umaxica.app',
+        sub: 'jump-redirect',
+        src: 'https://www.umaxica.app',
+        dst: 'internal',
+        url: locationUrl.href,
+      });
+    } finally {
+      setup.restore();
     }
   });
 

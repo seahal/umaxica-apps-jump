@@ -21,7 +21,6 @@ import { renderAbout } from './core/render_about';
 import { renderRobots, renderSitemap } from './core/render_discovery';
 import { jumpSecureHeaders, responseHygiene } from './core/security_headers';
 import { NoopOutboundSigner } from './core/sign_outbound';
-import { renderHomePage } from './core/page';
 import { PRODUCTION_SERVICE_ORIGIN, type JumpConfig, type RuntimeInfo } from './core/types';
 
 export type AppOptions = Omit<Partial<JumpDeps>, 'config'> & {
@@ -62,17 +61,15 @@ export function createApp(options: AppOptions = {}) {
   app.use('*', jumpSecureHeaders());
 
   app.get('/', async (c) => {
+    if (c.req.query('rt') === undefined) return c.redirect('/about');
     const locale = requestLocale(c);
-    if (c.req.query('rt') !== undefined) {
-      const deps: JumpDeps = { registry, jwksCache, replayCache, runtime, signer, config };
-      deps.auditLog = options.auditLog ?? auditLog;
-      deps.locale = locale;
-      if (options.now) deps.now = options.now;
-      if (options.randomJti) deps.randomJti = options.randomJti;
-      if (options.outboundTtl !== undefined) deps.outboundTtl = options.outboundTtl;
-      return handleJump(c.req.raw, deps);
-    }
-    return html(c, renderHomePage(locale), locale);
+    const deps: JumpDeps = { registry, jwksCache, replayCache, runtime, signer, config };
+    deps.auditLog = options.auditLog ?? auditLog;
+    deps.locale = locale;
+    if (options.now) deps.now = options.now;
+    if (options.randomJti) deps.randomJti = options.randomJti;
+    if (options.outboundTtl !== undefined) deps.outboundTtl = options.outboundTtl;
+    return handleJump(c.req.raw, deps);
   });
 
   app.get('/about', (c) =>

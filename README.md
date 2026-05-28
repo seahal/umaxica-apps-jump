@@ -4,7 +4,7 @@ Jump Gateway is a Hono-only, stateless redirect trust broker for `https://jump.e
 
 Issuer applications create an `rt` compact JWS. Jump validates the JWT, issuer registry, JWKS signature, destination policy, and normalized URL before crossing FQDN boundaries. Internal destinations may receive a redirect. External destinations always receive a cushion page first.
 
-This project intentionally starts with copy-paste integration examples before introducing official libraries. Issuer applications should fully understand the JWTs they generate.
+This project will introduce integration examples before official libraries. Issuer applications should fully understand the JWTs they generate.
 
 ## Purpose
 
@@ -25,36 +25,13 @@ Jump exists to make redirect decisions server-side at an edge boundary instead o
 
 ```mermaid
 flowchart LR
-  issuer[Issuer app] -->|rt JWT in URL| jump[Jump Gateway]
+  issuer[Issuer app] -->|GET /?rt=JWT| jump[Jump Gateway]
   jump -->|validate JWT + URL policy| decision{dst}
-  decision -->|internal| dest[Destination]
+  jump -->|invalid rt| error[Error page]
+  decision -->|internal| dest[302 Destination]
   decision -->|external| cushion[Cushion page]
   cushion -->|user continues| ext[External site]
 ```
-
-## Short TypeScript Example
-
-```ts
-const rt = await new SignJWT({
-  schema: 1,
-  iss: 'https://app.example.com',
-  aud: 'https://jump.example.net',
-  sub: 'jump-redirect',
-  iat: now,
-  nbf: now,
-  exp: now + 14 * 24 * 60 * 60,
-  jti: crypto.randomUUID(),
-  dst: 'internal',
-  url: 'https://docs.example.com/path',
-})
-  .setProtectedHeader({ typ: 'JWT', alg: 'ES384', kid: 'issuer-key-2026-05' })
-  .sign(privateKey);
-
-location.href = `https://jump.example.net/?rt=${rt}`;
-```
-
-This raw `rt` URL form applies to JWT/JWS compact serialization only. Compact JWT
-segments are base64url encoded, so they are already safe in the query value.
 
 ## Local Runtime Checks
 
@@ -144,7 +121,6 @@ If Fastly is reachable inside the container but not from the host, confirm that 
 - [Decisions](docs/decisions.md)
 - [Glossary](docs/glossary.md)
 - [FAQ](docs/faq.md)
-- Usage examples: [Ruby](docs/usage/ruby.md), [TypeScript](docs/usage/typescript.md), [Rust](docs/usage/rust.md)
 
 ## Future Libraries
 
