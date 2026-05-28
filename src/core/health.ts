@@ -1,5 +1,6 @@
 import { SERVICE, type RuntimeInfo } from './types';
 import { escapeHtml } from './escape';
+import { messages, type Locale } from './i18n';
 
 export function healthJson(runtime: RuntimeInfo, now = new Date()) {
   return {
@@ -15,24 +16,34 @@ export function wantsJson(accept: string | null) {
   return accept?.includes('application/json') || false;
 }
 
-export function renderHealthHtml(runtime: RuntimeInfo) {
+export function renderHealthHtml(runtime: RuntimeInfo, locale: Locale = 'ja') {
+  const t = messages[locale];
   const h = healthJson(runtime);
+  const rows = (Object.entries(h) as Array<[string, HealthDisplayValue]>)
+    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(displayValue(value))}</dd>`)
+    .join('\n');
   return `<!doctype html>
-<html lang="en">
+<html lang="${locale}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive">
-<title>Jump health</title>
+<title>${t.healthTitle}</title>
 </head>
 <body>
 <main>
-<h1>OK</h1>
+<h1>${t.healthOk}</h1>
 <dl>
-<dt>edge</dt><dd>${escapeHtml(h.edge)}</dd>
-<dt>version</dt><dd>${escapeHtml(h.version)}</dd>
+${rows}
 </dl>
 </main>
 </body>
 </html>`;
+}
+
+type HealthDisplayValue = string | boolean | null | undefined;
+
+function displayValue(value: HealthDisplayValue) {
+  if (value === null || value === undefined) return '';
+  return String(value);
 }

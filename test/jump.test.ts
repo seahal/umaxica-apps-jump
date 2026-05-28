@@ -1,6 +1,8 @@
 import { exportJWK, generateKeyPair, jwtVerify, SignJWT, type JWK } from 'jose';
 import { describe, expect, test, vi } from 'vite-plus/test';
+import { registry as umaxicaRegistry } from '../src/config/registry.umaxica';
 import { createApp, detectRuntime, fetchExampleJwks } from '../src';
+import { fetchRegistryJwks } from '../src/core/fetch_jwks';
 import cloudflareWorker from '../src/cloudflare';
 import { handleJump, type JumpDeps } from '../src/core/handle_jump';
 import { healthJson, renderHealthHtml, wantsJson } from '../src/core/health';
@@ -101,6 +103,12 @@ async function jump(app: Fixture['app'], rt: string) {
   return app.request(`https://jump.example.net/?rt=${rt}`);
 }
 
+async function jumpEn(app: Fixture['app'], rt: string) {
+  return app.request(`https://jump.example.net/?rt=${rt}`, {
+    headers: { 'Accept-Language': 'en' },
+  });
+}
+
 async function fetchCloudflareWorker(
   path: string,
   env: Parameters<typeof cloudflareWorker.fetch>[1],
@@ -118,6 +126,53 @@ describe('jump gateway routes', () => {
     const res = await app.request('https://jump.example.net/health.json');
     expect(await res.json()).toMatchObject({ edge: 'local' });
     expect((await fetchExampleJwks()).keys.length).toBeGreaterThan(0);
+  });
+
+  test('umaxica production registry limits issuers and internal destinations', () => {
+    expect(Object.keys(umaxicaRegistry)).toEqual([
+      'https://id.umaxica.app',
+      'https://id.umaxica.com',
+      'https://id.umaxica.org',
+      'https://www.umaxica.app',
+      'https://www.umaxica.com',
+      'https://www.umaxica.org',
+      'https://www.jp.umaxica.app',
+      'https://www.jp.umaxica.com',
+      'https://www.jp.umaxica.org',
+    ]);
+    expect(umaxicaRegistry['https://id.umaxica.app']).toMatchObject({
+      jwks_uri: 'https://id.umaxica.app/.well-known/jwks.json',
+      allowed_dst_internal: ['https://www.umaxica.app'],
+      allowed_dst_external: false,
+    });
+    for (const issuer of Object.values(umaxicaRegistry)) {
+      expect(issuer.iss).toBeTruthy();
+      expect(issuer.jwks_uri).toBe(`${issuer.iss}/.well-known/jwks.json`);
+      expect(issuer.allowed_dst_external).toBe(false);
+      expect(issuer.revoked_kids).toEqual([]);
+      for (const origin of issuer.allowed_dst_internal) {
+        expect(new URL(origin).origin).toBe(origin);
+      }
+    }
+  });
+
+  test('registry jwks fetcher uses issuer jwks uri', async () => {
+    const previousFetch = globalThis.fetch;
+    const fetchMock = vi.fn(async () => Response.json({ keys: [{ kid: 'kid-1' }] }));
+    globalThis.fetch = fetchMock as typeof fetch;
+    try {
+      const issuer = umaxicaRegistry['https://id.umaxica.app'];
+      expect(issuer).toBeDefined();
+      if (!issuer) throw new Error('missing test issuer');
+      await expect(fetchRegistryJwks(issuer)).resolves.toEqual({
+        keys: [{ kid: 'kid-1' }],
+      });
+      expect(fetchMock).toHaveBeenCalledWith('https://id.umaxica.app/.well-known/jwks.json', {
+        headers: { Accept: 'application/json' },
+      });
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
   });
 
   test('runtime detection names fastly and cloudflare explicitly', () => {
@@ -157,9 +212,31 @@ describe('jump gateway routes', () => {
       edge: 'local',
     });
     const html = await app.request('https://jump.example.net/health.html');
-    expect(await html.text()).toContain(
-      '<meta name="robots" content="noindex,nofollow,noarchive">',
-    );
+    const healthHtml = await html.text();
+    expect(healthHtml).toContain('<meta name="robots" content="noindex,nofollow,noarchive">');
+    expect(healthHtml).toContain('<dt>ok</dt><dd>true</dd>');
+    expect(healthHtml).toContain('<dt>service</dt><dd>jump</dd>');
+    expect(healthHtml).toContain('<dt>version</dt><dd>0.1.0</dd>');
+    expect(healthHtml).toContain('<dt>edge</dt><dd>local</dd>');
+    expect(healthHtml).toContain('<dt>time</dt><dd>');
+    expect(html.headers.get('Content-Language')).toBe('ja');
+  });
+
+  test('html routes default to ja and support en via Accept-Language', async () => {
+    const { app } = await fixture();
+    const ja = await app.request('https://jump.example.net/about');
+    const en = await app.request('https://jump.example.net/about', {
+      headers: { 'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8' },
+    });
+    const ignored = await app.request('https://jump.example.net/about', {
+      headers: { 'Accept-Language': 'fr' },
+    });
+
+    expect(ja.headers.get('Content-Language')).toBe('ja');
+    expect(await ja.text()).toContain('<html lang="ja">');
+    expect(en.headers.get('Content-Language')).toBe('en');
+    expect(await en.text()).toContain('<html lang="en">');
+    expect(ignored.headers.get('Content-Language')).toBe('ja');
   });
 
   test('health helpers cover accept parsing', () => {
@@ -345,6 +422,35 @@ describe('jump gateway routes', () => {
     expect(res.headers.get('Cache-Control')).toBe('no-store');
     expect(res.headers.get('Set-Cookie')).toBeNull();
   });
+
+  test('decision audit logs omit rt while keeping verification fields', async () => {
+    const entries: unknown[] = [];
+    const { app, signToken } = await fixtureWithOptions({
+      auditLog: (entry) => entries.push(entry),
+    });
+    const token = await signToken({
+      jti: 'audit-jti',
+      url: 'https://app.example.com/a/path?secret=value#frag',
+    });
+    const res = await jump(app, token);
+
+    expect(res.status).toBe(302);
+    expect(entries).toEqual([
+      {
+        level: 'info',
+        event: 'jump_accept',
+        result: 'accepted',
+        iss: 'https://app.example.com',
+        kid: 'kid-1',
+        jti: 'audit-jti',
+        dst: 'internal',
+        dst_origin: 'https://app.example.com',
+        dst_path: '/a/path',
+      },
+    ]);
+    expect(JSON.stringify(entries)).not.toContain(token);
+    expect(JSON.stringify(entries)).not.toContain('secret=value');
+  });
 });
 
 describe('jump token validation', () => {
@@ -360,6 +466,26 @@ describe('jump token validation', () => {
     const { app } = await fixture();
     const res = await jump(app, 'abc.def');
     expect(res.status).toBe(400);
+  });
+
+  test('decision audit logs malformed rt parse failures without raw token', async () => {
+    const entries: unknown[] = [];
+    const { app } = await fixtureWithOptions({
+      auditLog: (entry) => entries.push(entry),
+    });
+    const token = 'not-a-compact-jwt-with-secret-like-content';
+    const res = await jump(app, token);
+
+    expect(res.headers.get('X-Jump-Error')).toBe('malformed');
+    expect(entries).toEqual([
+      {
+        level: 'warn',
+        event: 'jump_reject',
+        result: 'rejected',
+        reason: 'malformed',
+      },
+    ]);
+    expect(JSON.stringify(entries)).not.toContain(token);
   });
 
   test('oversized rt rejects before jwt parsing', async () => {
@@ -648,6 +774,33 @@ describe('jump token validation', () => {
     expect(res.headers.get('X-Jump-Error')).toBe('invalid_dst');
   });
 
+  test('decision audit logs rejected token metadata without full jwt', async () => {
+    const entries: unknown[] = [];
+    const { app, signToken } = await fixtureWithOptions({
+      auditLog: (entry) => entries.push(entry),
+    });
+    const token = await signToken({ jti: 'reject-jti', url: 'https://other.example/path?q=1' });
+    const res = await jump(app, token);
+
+    expect(res.headers.get('X-Jump-Error')).toBe('invalid_dst');
+    expect(entries).toEqual([
+      {
+        level: 'warn',
+        event: 'jump_reject',
+        result: 'rejected',
+        reason: 'invalid_dst',
+        iss: 'https://app.example.com',
+        kid: 'kid-1',
+        jti: 'reject-jti',
+        dst: 'internal',
+        dst_origin: 'https://other.example',
+        dst_path: '/path',
+      },
+    ]);
+    expect(JSON.stringify(entries)).not.toContain(token);
+    expect(JSON.stringify(entries)).not.toContain('q=1');
+  });
+
   test('self-link reject', async () => {
     const { app, signToken } = await fixture();
     const res = await jump(app, await signToken({ url: 'https://jump.example.net/about' }));
@@ -837,6 +990,45 @@ describe('jump token validation', () => {
     expect(html).toContain('rel="noopener noreferrer"');
   });
 
+  test('umaxica issuer renders external cushion only when external origin is allowlisted', async () => {
+    const issuerKeys = await generateKeyPair('ES384');
+    const jumpKeys = await generateKeyPair('ES384');
+    const jwk = await exportJWK(issuerKeys.publicKey);
+    const umaxicaIssuer = umaxicaRegistry['https://id.umaxica.app'];
+    if (!umaxicaIssuer) throw new Error('missing Umaxica test issuer');
+    const registry: IssuerRegistry = {
+      ...umaxicaRegistry,
+      'https://id.umaxica.app': {
+        ...umaxicaIssuer,
+        allowed_dst_external: ['https://example.com'],
+      },
+    };
+    const app = createApp({
+      registry,
+      jwksCache: new JwksCache(async () => ({
+        keys: [{ ...jwk, kid: 'kid-1', alg: 'ES384', use: 'sig' }],
+      })),
+      replayCache: new NoopReplayCache(),
+      runtime: { edge: 'local', production: true },
+      signer: new JoseOutboundSigner(jumpKeys.privateKey, 'jump-test'),
+      now: () => NOW,
+    });
+    const token = await signPayload(issuerKeys.privateKey, {
+      ...baseClaim(),
+      iss: 'https://id.umaxica.app',
+      dst: 'external',
+      url: 'https://example.com/jump/end?ok=1',
+    });
+
+    const res = await jumpEn(app, token);
+    const html = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(html).toContain('Continue to external site');
+    expect(html).toContain('href="https://example.com/jump/end?ok=1"');
+    expect(html).toContain('<dt>host</dt><dd>example.com</dd>');
+  });
+
   test('external cushion truncates long displayed URLs while preserving href', async () => {
     const registry: IssuerRegistry = {
       'https://app.example.com': {
@@ -898,7 +1090,7 @@ describe('jump token validation', () => {
     });
     const res = await jump(app, token);
     const html = await res.text();
-    expect(html).toContain('non-ASCII');
+    expect(html).toContain('非 ASCII');
   });
 
   test('internal redirect carries outbound rt signed by jump', async () => {

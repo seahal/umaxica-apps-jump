@@ -76,6 +76,22 @@ openssl pkey -in private.pem -pubout -out public.pem
 - Private keys must never appear in screenshots.
 - Private keys must never appear in example configs.
 
+## Runtime Secret Names
+
+Cloudflare Workers:
+
+- `UMAXICA_JUMP_PRIVATE_KEY_PEM`: ES384 P-384 private key in PKCS#8 PEM format.
+- `UMAXICA_JUMP_PRIVATE_KEY_KID`: active outbound signing key id.
+
+Fastly Compute:
+
+- Store the ES384 P-384 private key in Fastly Secret Store.
+- Store the active outbound signing key id as companion secret/config.
+
+Issuer registry entries are not private keys. The current production registry is
+checked in at `src/config/registry.umaxica.ts`; see
+`docs/operations/production-configuration.md`.
+
 ## Verification Flow
 
 ```mermaid
