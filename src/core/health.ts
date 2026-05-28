@@ -19,6 +19,9 @@ export function wantsJson(accept: string | null) {
 export function renderHealthHtml(runtime: RuntimeInfo, locale: Locale = 'ja') {
   const t = messages[locale];
   const h = healthJson(runtime);
+  const rows = (Object.entries(h) as Array<[string, HealthDisplayValue]>)
+    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(displayValue(value))}</dd>`)
+    .join('\n');
   return `<!doctype html>
 <html lang="${locale}">
 <head>
@@ -31,10 +34,16 @@ export function renderHealthHtml(runtime: RuntimeInfo, locale: Locale = 'ja') {
 <main>
 <h1>${t.healthOk}</h1>
 <dl>
-<dt>edge</dt><dd>${escapeHtml(h.edge)}</dd>
-<dt>version</dt><dd>${escapeHtml(h.version)}</dd>
+${rows}
 </dl>
 </main>
 </body>
 </html>`;
+}
+
+type HealthDisplayValue = string | boolean | null | undefined;
+
+function displayValue(value: HealthDisplayValue) {
+  if (value === null || value === undefined) return '';
+  return String(value);
 }

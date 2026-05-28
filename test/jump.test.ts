@@ -212,9 +212,13 @@ describe('jump gateway routes', () => {
       edge: 'local',
     });
     const html = await app.request('https://jump.example.net/health.html');
-    expect(await html.text()).toContain(
-      '<meta name="robots" content="noindex,nofollow,noarchive">',
-    );
+    const healthHtml = await html.text();
+    expect(healthHtml).toContain('<meta name="robots" content="noindex,nofollow,noarchive">');
+    expect(healthHtml).toContain('<dt>ok</dt><dd>true</dd>');
+    expect(healthHtml).toContain('<dt>service</dt><dd>jump</dd>');
+    expect(healthHtml).toContain('<dt>version</dt><dd>0.1.0</dd>');
+    expect(healthHtml).toContain('<dt>edge</dt><dd>local</dd>');
+    expect(healthHtml).toContain('<dt>time</dt><dd>');
     expect(html.headers.get('Content-Language')).toBe('ja');
   });
 
