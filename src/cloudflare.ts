@@ -101,11 +101,12 @@ async function createJoseSigner(env: CloudflareEnv, jumpJwks: JumpJwks | undefin
   const pem = await readPrivateKeyPem(env);
   const kid = await readPrivateKeyKid(env);
   const context = {
-    pem_present: Boolean(pem),
+    private_key_present: Boolean(pem),
     kid_present: Boolean(kid),
     kid: kid || undefined,
     jwks_present: Boolean(jumpJwks),
   };
+  logSignerConfig(context);
   if (!pem || !kid) {
     logSignerUnavailable({ ...context, reason: !pem ? 'missing_private_key' : 'missing_kid' });
     throw new JumpError('signer_unavailable', 'outbound signer not configured');
@@ -117,18 +118,28 @@ async function createJoseSigner(env: CloudflareEnv, jumpJwks: JumpJwks | undefin
     throw new JumpError('signer_unavailable', 'outbound signer public key mismatch');
   }
 
+  let privateKey: Parameters<SignJWT['sign']>[0];
   try {
-    const privateKey = await importPKCS8(pem, 'ES384');
-    await assertPrivateKeyMatchesPublicJwk(privateKey, publicJwk, kid);
-    logSignerConfigured({
-      kid,
-      public_jwks_kids: jumpJwks?.keys.flatMap((key) => (key.kid ? [key.kid] : [])) ?? [],
-    });
-    return new JoseOutboundSigner(privateKey, kid);
-  } catch {
-    logSignerUnavailable({ ...context, reason: 'private_key_import_or_pair_check_failed' });
+    privateKey = await importPKCS8(pem, 'ES384');
+  } catch (error) {
+    logSignerImportFailed(context, error);
+    logSignerUnavailable({ ...context, import_pkcs8_ok: false, reason: 'pkcs8_import_failed' });
     throw new JumpError('signer_unavailable', 'outbound signer not configured');
   }
+
+  try {
+    await assertPrivateKeyMatchesPublicJwk(privateKey, publicJwk, kid);
+  } catch (error) {
+    logSignerPairCheckFailed(context, error);
+    logSignerUnavailable({ ...context, import_pkcs8_ok: true, reason: 'key_pair_mismatch' });
+    throw new JumpError('signer_unavailable', 'outbound signer public key mismatch');
+  }
+
+  logSignerConfigured({
+    kid,
+    public_jwks_kids: jumpJwks?.keys.flatMap((key) => (key.kid ? [key.kid] : [])) ?? [],
+  });
+  return new JoseOutboundSigner(privateKey, kid);
 }
 
 async function readPrivateKeyPem(env: CloudflareEnv) {
@@ -172,15 +183,66 @@ async function assertPrivateKeyMatchesPublicJwk(
   });
 }
 
-function logSignerUnavailable(entry: {
-  reason: string;
-  pem_present: boolean;
+function logSignerConfig(entry: {
+  private_key_present: boolean;
   kid_present: boolean;
   kid?: string | undefined;
   jwks_present: boolean;
 }) {
   // eslint-disable-next-line no-console -- safe signer diagnostics omit tokens and secret material.
+  console.warn(JSON.stringify({ event: 'jump_signer_config', ...entry }));
+}
+
+function logSignerUnavailable(entry: {
+  reason: string;
+  private_key_present: boolean;
+  kid_present: boolean;
+  kid?: string | undefined;
+  jwks_present: boolean;
+  import_pkcs8_ok?: boolean | undefined;
+}) {
+  // eslint-disable-next-line no-console -- safe signer diagnostics omit tokens and secret material.
   console.warn(JSON.stringify({ event: 'jump_signer_unavailable', ...entry }));
+}
+
+function logSignerImportFailed(
+  entry: {
+    private_key_present: boolean;
+    kid_present: boolean;
+    kid?: string | undefined;
+    jwks_present: boolean;
+  },
+  error: unknown,
+) {
+  // eslint-disable-next-line no-console -- safe signer diagnostics omit tokens and secret material.
+  console.error(
+    JSON.stringify({
+      event: 'jump_signer_import_failed',
+      ...entry,
+      import_pkcs8_ok: false,
+      reason: error instanceof Error ? error.name : 'unknown',
+    }),
+  );
+}
+
+function logSignerPairCheckFailed(
+  entry: {
+    private_key_present: boolean;
+    kid_present: boolean;
+    kid?: string | undefined;
+    jwks_present: boolean;
+  },
+  error: unknown,
+) {
+  // eslint-disable-next-line no-console -- safe signer diagnostics omit tokens and secret material.
+  console.error(
+    JSON.stringify({
+      event: 'jump_signer_pair_check_failed',
+      ...entry,
+      import_pkcs8_ok: true,
+      reason: error instanceof Error ? error.name : 'unknown',
+    }),
+  );
 }
 
 function logSignerConfigured(entry: { kid: string; public_jwks_kids: string[] }) {

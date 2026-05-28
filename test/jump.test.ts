@@ -165,7 +165,7 @@ async function cloudflareInternalRedirectFixture() {
       exp: now + 3600,
       jti: crypto.randomUUID(),
       dst: 'internal',
-      url: 'https://www.umaxica.app/return',
+      url: 'https://www.umaxica.app/',
     },
     { kid: 'rails-kid-1' },
   );
@@ -410,7 +410,10 @@ describe('jump gateway routes', () => {
       expect(res.status).toBe(503);
       expect(res.headers.get('X-Jump-Error')).toBe('signer_unavailable');
       expect(warn.mock.calls.map(([message]) => String(message)).join('\n')).toContain(
-        'private_key_import_or_pair_check_failed',
+        'pkcs8_import_failed',
+      );
+      expect(warn.mock.calls.map(([message]) => String(message)).join('\n')).toContain(
+        '"private_key_present":true',
       );
       expect(warn.mock.calls.map(([message]) => String(message)).join('\n')).not.toContain(
         'not a pkcs8 key',
@@ -466,7 +469,7 @@ describe('jump gateway routes', () => {
         sub: 'jump-redirect',
         src: 'https://www.umaxica.app',
         dst: 'internal',
-        url: 'https://www.umaxica.app/return',
+        url: 'https://www.umaxica.app/',
       });
       const infoLines = info.mock.calls.map(([message]) => String(message)).join('\n');
       expect(infoLines).toContain('"signer_configured":true');
