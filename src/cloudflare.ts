@@ -1,10 +1,10 @@
-import { importPKCS8 } from 'jose';
+import { importJWK, importPKCS8, jwtVerify, SignJWT, type JWK } from 'jose';
 import { registry as umaxicaRegistry } from './config/registry.umaxica';
 import { fetchRegistryJwks } from './core/fetch_jwks';
 import { createApp } from './index';
 import { JoseOutboundSigner, NoopOutboundSigner, type OutboundSigner } from './core/sign_outbound';
-import { PRODUCTION_SERVICE_ORIGIN, type OutboundJumpClaim } from './core/types';
-import { parseJumpJwks } from './core/jump_jwks';
+import { JumpError, PRODUCTION_SERVICE_ORIGIN, type OutboundJumpClaim } from './core/types';
+import { parseJumpJwks, type JumpJwks } from './core/jump_jwks';
 
 type SecretBinding = string | { get(): Promise<string> };
 type RateLimiter = {
@@ -48,7 +48,7 @@ export default {
         version: cloudflareRevision(env),
         production: true,
       },
-      signer: shouldSignJump(url) ? createSigner(env) : new NoopOutboundSigner(),
+      signer: shouldSignJump(url) ? createSigner(env, jumpJwks) : new NoopOutboundSigner(),
     });
     return app.fetch(request, env, executionContext);
   },
@@ -72,31 +72,59 @@ async function checkRateLimit(request: Request, env: CloudflareEnv) {
   return new Response(`429 Failure - rate limit exceeded for ${pathname}`, { status: 429 });
 }
 
-function createSigner(env: CloudflareEnv) {
-  return new LazyCloudflareSigner(env);
+function createSigner(env: CloudflareEnv, jumpJwks: JumpJwks | undefined) {
+  return new LazyCloudflareSigner(env, jumpJwks);
 }
 
 class LazyCloudflareSigner implements OutboundSigner {
-  readonly kid = 'jump-current';
+  readonly kid: string;
   private loading: Promise<OutboundSigner> | null = null;
 
-  constructor(private readonly env: CloudflareEnv) {}
+  constructor(
+    private readonly env: CloudflareEnv,
+    private readonly jumpJwks: JumpJwks | undefined,
+  ) {
+    this.kid = readStringBindingSync(env.UMAXICA_JUMP_PRIVATE_KEY_KID ?? env.JUMP_PRIVATE_KEY_KID);
+  }
 
   async sign(claim: OutboundJumpClaim) {
     return (await this.loadSigner()).sign(claim);
   }
 
   private loadSigner() {
-    if (!this.loading) this.loading = createJoseSigner(this.env);
+    if (!this.loading) this.loading = createJoseSigner(this.env, this.jumpJwks);
     return this.loading;
   }
 }
 
-async function createJoseSigner(env: CloudflareEnv) {
+async function createJoseSigner(env: CloudflareEnv, jumpJwks: JumpJwks | undefined) {
   const pem = await readPrivateKeyPem(env);
-  if (!pem) return new NoopOutboundSigner();
-  const kid = (await readPrivateKeyKid(env)) || 'jump-current';
-  return new JoseOutboundSigner(await importPKCS8(pem, 'ES384'), kid);
+  const kid = await readPrivateKeyKid(env);
+  const context = {
+    pem_present: Boolean(pem),
+    kid_present: Boolean(kid),
+    kid: kid || undefined,
+    jwks_present: Boolean(jumpJwks),
+  };
+  if (!pem || !kid) {
+    logSignerUnavailable({ ...context, reason: !pem ? 'missing_private_key' : 'missing_kid' });
+    throw new JumpError('signer_unavailable', 'outbound signer not configured');
+  }
+
+  const publicJwk = jumpJwks?.keys.find((key) => key.kid === kid);
+  if (!publicJwk) {
+    logSignerUnavailable({ ...context, reason: 'kid_not_in_public_jwks' });
+    throw new JumpError('signer_unavailable', 'outbound signer public key mismatch');
+  }
+
+  try {
+    const privateKey = await importPKCS8(pem, 'ES384');
+    await assertPrivateKeyMatchesPublicJwk(privateKey, publicJwk, kid);
+    return new JoseOutboundSigner(privateKey, kid);
+  } catch {
+    logSignerUnavailable({ ...context, reason: 'private_key_import_or_pair_check_failed' });
+    throw new JumpError('signer_unavailable', 'outbound signer not configured');
+  }
 }
 
 async function readPrivateKeyPem(env: CloudflareEnv) {
@@ -116,4 +144,35 @@ async function readBinding(binding: SecretBinding | undefined) {
   if (!binding) return null;
   if (typeof binding === 'string') return binding;
   return binding.get();
+}
+
+function readStringBindingSync(binding: SecretBinding | undefined) {
+  return typeof binding === 'string' ? binding : 'unloaded';
+}
+
+async function assertPrivateKeyMatchesPublicJwk(
+  privateKey: Parameters<SignJWT['sign']>[0],
+  publicJwk: JWK,
+  kid: string,
+) {
+  const now = Math.floor(Date.now() / 1000);
+  const token = await new SignJWT({ probe: true, iat: now })
+    .setProtectedHeader({ typ: 'JWT', alg: 'ES384', kid })
+    .sign(privateKey);
+  await jwtVerify(token, await importJWK(publicJwk, 'ES384'), {
+    algorithms: ['ES384'],
+    typ: 'JWT',
+    currentDate: new Date(now * 1000),
+  });
+}
+
+function logSignerUnavailable(entry: {
+  reason: string;
+  pem_present: boolean;
+  kid_present: boolean;
+  kid?: string | undefined;
+  jwks_present: boolean;
+}) {
+  // eslint-disable-next-line no-console -- safe signer diagnostics omit tokens and secret material.
+  console.warn(JSON.stringify({ event: 'jump_signer_unavailable', ...entry }));
 }

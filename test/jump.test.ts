@@ -1,4 +1,13 @@
-import { exportJWK, generateKeyPair, importJWK, jwtVerify, SignJWT, type JWK } from 'jose';
+import {
+  decodeProtectedHeader,
+  exportJWK,
+  exportPKCS8,
+  generateKeyPair,
+  importJWK,
+  jwtVerify,
+  SignJWT,
+  type JWK,
+} from 'jose';
 import { describe, expect, test, vi } from 'vite-plus/test';
 import { registry as umaxicaRegistry } from '../src/config/registry.umaxica';
 import { createApp, detectRuntime, fetchExampleJwks, type AppOptions } from '../src';
@@ -39,7 +48,7 @@ async function fixture(): Promise<Fixture> {
 
 async function fixtureWithOptions(options: AppOptions = {}): Promise<Fixture> {
   const issuerKeys = await generateKeyPair('ES384');
-  const jumpKeys = await generateKeyPair('ES384');
+  const jumpKeys = await generateKeyPair('ES384', { extractable: true });
   const issuerJwk = await exportJWK(issuerKeys.publicKey);
   const jumpJwk = await exportJWK(jumpKeys.publicKey);
   const publicJwk: JWK = { ...issuerJwk, kid: 'kid-1', alg: 'ES384', use: 'sig' };
@@ -130,6 +139,47 @@ async function fetchCloudflareWorker(
   );
 }
 
+async function cloudflareInternalRedirectFixture() {
+  const previousFetch = globalThis.fetch;
+  const issuerKeys = await generateKeyPair('ES384');
+  const jumpKeys = await generateKeyPair('ES384', { extractable: true });
+  const issuerJwk = await exportJWK(issuerKeys.publicKey);
+  const jumpJwk = await exportJWK(jumpKeys.publicKey);
+  const issuerPublicJwk: JWK = { ...issuerJwk, kid: 'rails-kid-1', alg: 'ES384', use: 'sig' };
+  const jumpPublicJwk: JWK = {
+    ...jumpJwk,
+    kid: 'cloudflare-active-2026-05',
+    alg: 'ES384',
+    use: 'sig',
+  };
+  globalThis.fetch = vi.fn(async () => Response.json({ keys: [issuerPublicJwk] })) as typeof fetch;
+  const now = Math.floor(Date.now() / 1000);
+  const inboundToken = await signPayload(
+    issuerKeys.privateKey,
+    {
+      ...baseClaim(),
+      iss: 'https://id.umaxica.app',
+      aud: 'https://jump.umaxica.net',
+      iat: now,
+      nbf: now,
+      exp: now + 3600,
+      jti: crypto.randomUUID(),
+      dst: 'internal',
+      url: 'https://www.umaxica.app/return',
+    },
+    { kid: 'rails-kid-1' },
+  );
+  return {
+    inboundToken,
+    jumpPrivatePem: await exportPKCS8(jumpKeys.privateKey),
+    jumpPublicJwk,
+    jumpPublicKey: jumpKeys.publicKey,
+    restore() {
+      globalThis.fetch = previousFetch;
+    },
+  };
+}
+
 describe('jump gateway routes', () => {
   test('default app serves local health data', async () => {
     const app = createApp();
@@ -203,11 +253,17 @@ describe('jump gateway routes', () => {
     }
   });
 
-  test('GET / redirects to /about when rt is absent', async () => {
+  test('GET / renders home page when rt is absent', async () => {
     const { app } = await fixture();
     const res = await app.request('https://jump.example.net/');
-    expect(res.status).toBe(302);
-    expect(res.headers.get('Location')).toBe('/about');
+    const body = await res.text();
+
+    expect(res.status).toBe(200);
+    expect(body).toContain('<title>UMAXICA Jump Gateway</title>');
+    expect(body).toContain('<header><a href="/">UMAXICA</a></header>');
+    expect(body).toContain('<footer>© 2026 UMAXICA <time');
+    expect(body).toContain('data-local-time=""');
+    expect(body).toContain('new Intl.DateTimeFormat(undefined,{dateStyle:"medium"');
   });
 
   test('health JSON and HTML include runtime data', async () => {
@@ -223,12 +279,16 @@ describe('jump gateway routes', () => {
     });
     const html = await app.request('https://jump.example.net/health.html');
     const healthHtml = await html.text();
-    expect(healthHtml).toContain('<meta name="robots" content="noindex,nofollow,noarchive">');
+    expect(healthHtml).toContain('<meta name="robots" content="noindex,nofollow,noarchive"/>');
+    expect(healthHtml).toContain('<title>UMAXICA Jump Gateway | Health status</title>');
+    expect(healthHtml).toContain('<header><a href="/">UMAXICA</a></header>');
     expect(healthHtml).toContain('<dt>ok</dt><dd>true</dd>');
     expect(healthHtml).toContain('<dt>service</dt><dd>jump</dd>');
     expect(healthHtml).toContain('<dt>version</dt><dd>0.1.0</dd>');
     expect(healthHtml).toContain('<dt>edge</dt><dd>local</dd>');
     expect(healthHtml).toContain('<dt>time</dt><dd>');
+    expect(healthHtml).toContain('<footer>© 2026 UMAXICA <time');
+    expect(healthHtml).toContain('data-local-time=""');
     expect(html.headers.get('Content-Language')).toBe('ja');
   });
 
@@ -243,7 +303,11 @@ describe('jump gateway routes', () => {
     });
 
     expect(ja.headers.get('Content-Language')).toBe('ja');
-    expect(await ja.text()).toContain('<html lang="ja">');
+    const jaHtml = await ja.text();
+    expect(jaHtml).toContain('<title>UMAXICA Jump Gateway | About</title>');
+    expect(jaHtml).toContain('<header><a href="/">UMAXICA</a></header>');
+    expect(jaHtml).toContain('<footer>© 2026 UMAXICA <time');
+    expect(jaHtml).toContain('data-local-time=""');
     expect(en.headers.get('Content-Language')).toBe('en');
     expect(await en.text()).toContain('<html lang="en">');
     expect(ignored.headers.get('Content-Language')).toBe('ja');
@@ -335,6 +399,66 @@ describe('jump gateway routes', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ keys: [jumpPublicJwk] });
+  });
+
+  test('cloudflare worker reports signer_unavailable when private key import fails', async () => {
+    const setup = await cloudflareInternalRedirectFixture();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const res = await fetchCloudflareWorker(`/?rt=${setup.inboundToken}`, {
+        UMAXICA_JUMP_PRIVATE_KEY_PEM: 'not a pkcs8 key',
+        UMAXICA_JUMP_PRIVATE_KEY_KID: 'cloudflare-active-2026-05',
+        UMAXICA_JUMP_PUBLIC_JWKS: JSON.stringify({ keys: [setup.jumpPublicJwk] }),
+      });
+
+      expect(res.status).toBe(503);
+      expect(res.headers.get('X-Jump-Error')).toBe('signer_unavailable');
+      expect(warn.mock.calls.map(([message]) => String(message)).join('\n')).toContain(
+        'private_key_import_or_pair_check_failed',
+      );
+      expect(warn.mock.calls.map(([message]) => String(message)).join('\n')).not.toContain(
+        'not a pkcs8 key',
+      );
+    } finally {
+      setup.restore();
+      warn.mockRestore();
+    }
+  });
+
+  test('cloudflare worker signs internal redirect rt with configured kid', async () => {
+    const setup = await cloudflareInternalRedirectFixture();
+    try {
+      const res = await fetchCloudflareWorker(`/?rt=${setup.inboundToken}`, {
+        UMAXICA_JUMP_PRIVATE_KEY_PEM: setup.jumpPrivatePem,
+        UMAXICA_JUMP_PRIVATE_KEY_KID: 'cloudflare-active-2026-05',
+        UMAXICA_JUMP_PUBLIC_JWKS: JSON.stringify({ keys: [setup.jumpPublicJwk] }),
+      });
+
+      expect(res.status).toBe(302);
+      const location = res.headers.get('Location');
+      expect(location).toBeTruthy();
+      const returnedRt = new URL(location ?? '').searchParams.get('rt');
+      expect(returnedRt).toBeTruthy();
+      expect(decodeProtectedHeader(returnedRt ?? '').kid).toBe('cloudflare-active-2026-05');
+      const verified = await jwtVerify(returnedRt ?? '', setup.jumpPublicKey, {
+        issuer: 'https://jump.umaxica.net',
+        audience: 'https://www.umaxica.app',
+        algorithms: ['ES384'],
+        typ: 'JWT',
+        currentDate: new Date(),
+      });
+      expect(verified.payload).toMatchObject({
+        schema: 1,
+        iss: 'https://jump.umaxica.net',
+        aud: 'https://www.umaxica.app',
+        sub: 'jump-redirect',
+        src: 'https://id.umaxica.app',
+        dst: 'internal',
+        url: 'https://www.umaxica.app/return',
+      });
+    } finally {
+      setup.restore();
+    }
   });
 
   test('cloudflare worker reports version metadata id as health version', async () => {
@@ -440,7 +564,7 @@ describe('jump gateway routes', () => {
     expect(lines.some((line) => line.includes('rt=[redacted]'))).toBe(true);
   });
 
-  test('default signer failure maps to malformed error', async () => {
+  test('signer unavailable maps to 503 for internal redirects', async () => {
     const issuerKeys = await generateKeyPair('ES384');
     const jwk = await exportJWK(issuerKeys.publicKey);
     const noSigner = createApp({
@@ -465,8 +589,8 @@ describe('jump gateway routes', () => {
         dst: 'internal',
       })}`,
     );
-    expect(res.status).toBe(400);
-    expect(res.headers.get('X-Jump-Error')).toBe('malformed');
+    expect(res.status).toBe(503);
+    expect(res.headers.get('X-Jump-Error')).toBe('signer_unavailable');
   });
 
   test('redirect responses avoid referrer, cache, and cookies', async () => {

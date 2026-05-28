@@ -1,5 +1,5 @@
 import { SignJWT } from 'jose';
-import type { OutboundJumpClaim } from './types';
+import { JumpError, type OutboundJumpClaim } from './types';
 
 type SignKey = Parameters<SignJWT['sign']>[0];
 
@@ -26,6 +26,6 @@ export class NoopOutboundSigner implements OutboundSigner {
   readonly kid = 'noop';
 
   async sign(): Promise<string> {
-    throw new Error('outbound signer not configured');
+    throw new JumpError('signer_unavailable', 'outbound signer not configured');
   }
 }

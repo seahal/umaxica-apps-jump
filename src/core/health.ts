@@ -1,6 +1,6 @@
 import { SERVICE, type RuntimeInfo } from './types';
-import { escapeHtml } from './escape';
-import { messages, type Locale } from './i18n';
+import { type Locale } from './i18n';
+import { renderHealthPage } from './page';
 
 export function healthJson(runtime: RuntimeInfo, now = new Date()) {
   return {
@@ -17,33 +17,6 @@ export function wantsJson(accept: string | null) {
 }
 
 export function renderHealthHtml(runtime: RuntimeInfo, locale: Locale = 'ja') {
-  const t = messages[locale];
   const h = healthJson(runtime);
-  const rows = (Object.entries(h) as Array<[string, HealthDisplayValue]>)
-    .map(([key, value]) => `<dt>${escapeHtml(key)}</dt><dd>${escapeHtml(displayValue(value))}</dd>`)
-    .join('\n');
-  return `<!doctype html>
-<html lang="${locale}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow,noarchive">
-<title>${t.healthTitle}</title>
-</head>
-<body>
-<main>
-<h1>${t.healthOk}</h1>
-<dl>
-${rows}
-</dl>
-</main>
-</body>
-</html>`;
-}
-
-type HealthDisplayValue = string | boolean | null | undefined;
-
-function displayValue(value: HealthDisplayValue) {
-  if (value === null || value === undefined) return '';
-  return String(value);
+  return renderHealthPage(Object.entries(h), locale);
 }

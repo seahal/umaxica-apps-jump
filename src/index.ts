@@ -21,6 +21,7 @@ import { renderAbout } from './core/render_about';
 import { renderRobots, renderSitemap } from './core/render_discovery';
 import { jumpSecureHeaders, responseHygiene } from './core/security_headers';
 import { NoopOutboundSigner } from './core/sign_outbound';
+import { renderHomePage } from './core/page';
 import { PRODUCTION_SERVICE_ORIGIN, type JumpConfig, type RuntimeInfo } from './core/types';
 
 export type AppOptions = Omit<Partial<JumpDeps>, 'config'> & {
@@ -71,7 +72,7 @@ export function createApp(options: AppOptions = {}) {
       if (options.outboundTtl !== undefined) deps.outboundTtl = options.outboundTtl;
       return handleJump(c.req.raw, deps);
     }
-    return c.redirect('/about', 302);
+    return html(c, renderHomePage(locale), locale);
   });
 
   app.get('/about', (c) =>

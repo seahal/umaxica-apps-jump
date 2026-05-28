@@ -1,25 +1,10 @@
-import { PRODUCTION_SERVICE_ORIGIN, SERVICE } from './types';
-import { messages, type Locale } from './i18n';
+import { type Locale } from './i18n';
+import { renderAboutPage } from './page';
+import { PRODUCTION_SERVICE_ORIGIN } from './types';
 
 export function renderAbout(
   locale: Locale = 'ja',
   serviceOrigin: string = PRODUCTION_SERVICE_ORIGIN,
 ) {
-  const t = messages[locale];
-  return `<!doctype html>
-<html lang="${locale}">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="robots" content="noindex,nofollow,noarchive">
-<title>${t.aboutTitle}</title>
-</head>
-<body>
-<main>
-<h1>${t.aboutTitle}</h1>
-<p>${t.aboutDescription} ${serviceOrigin}</p>
-<p>${t.version} ${SERVICE.version}</p>
-</main>
-</body>
-</html>`;
+  return renderAboutPage(locale, serviceOrigin);
 }

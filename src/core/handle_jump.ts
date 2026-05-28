@@ -101,13 +101,19 @@ export async function handleJump(request: Request, deps: JumpDeps): Promise<Resp
       ...audit,
     });
     return new Response(renderError(deps.locale), {
-      status: code === 'expired' ? 410 : 400,
+      status: errorStatus(code),
       headers: {
         ...htmlHeaders(deps.locale),
         'X-Jump-Error': code,
       },
     });
   }
+}
+
+function errorStatus(code: string) {
+  if (code === 'expired') return 410;
+  if (code === 'signer_unavailable') return 503;
+  return 400;
 }
 
 function htmlHeaders(locale: Locale = 'ja') {

@@ -6,11 +6,11 @@ export function asLocale(value: string | undefined): Locale {
 
 export const messages = {
   ja: {
-    aboutTitle: 'Jump Gateway',
-    aboutDescription:
-      'このステートレスゲートウェイは、FQDN をまたぐ前にリダイレクトトークンを検証します。',
-    version: 'バージョン',
-    healthTitle: 'Jump health',
+    homeTitle: 'UMAXICA Jump Gateway',
+    aboutTitle: 'UMAXICA Jump Gateway',
+    aboutPageTitle: 'UMAXICA Jump Gateway | About',
+    aboutDescription: 'UMAXICA のジャンプページです。',
+    healthTitle: 'UMAXICA Jump Gateway | Health status',
     healthOk: 'OK',
     errorTitle: '無効な Jump',
     errorHeading: '無効な Jump リクエスト',
@@ -22,11 +22,11 @@ export const messages = {
     continue: '続行',
   },
   en: {
-    aboutTitle: 'Jump Gateway',
-    aboutDescription:
-      'This stateless gateway validates redirect tokens before crossing fully qualified domain names.',
-    version: 'Version',
-    healthTitle: 'Jump health',
+    homeTitle: 'UMAXICA Jump Gateway',
+    aboutTitle: 'UMAXICA Jump Gateway',
+    aboutPageTitle: 'UMAXICA Jump Gateway | About',
+    aboutDescription: 'This is the UMAXICA jump page.',
+    healthTitle: 'UMAXICA Jump Gateway | Health status',
     healthOk: 'OK',
     errorTitle: 'Invalid jump',
     errorHeading: 'Invalid jump request',

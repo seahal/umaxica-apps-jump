@@ -64,7 +64,8 @@ export type JumpErrorCode =
   | 'expired'
   | 'replay'
   | 'invalid_dst'
-  | 'invalid_url';
+  | 'invalid_url'
+  | 'signer_unavailable';
 
 export class JumpError extends Error {
   readonly code: JumpErrorCode;
