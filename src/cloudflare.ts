@@ -120,6 +120,10 @@ async function createJoseSigner(env: CloudflareEnv, jumpJwks: JumpJwks | undefin
   try {
     const privateKey = await importPKCS8(pem, 'ES384');
     await assertPrivateKeyMatchesPublicJwk(privateKey, publicJwk, kid);
+    logSignerConfigured({
+      kid,
+      public_jwks_kids: jumpJwks?.keys.flatMap((key) => (key.kid ? [key.kid] : [])) ?? [],
+    });
     return new JoseOutboundSigner(privateKey, kid);
   } catch {
     logSignerUnavailable({ ...context, reason: 'private_key_import_or_pair_check_failed' });
@@ -128,11 +132,13 @@ async function createJoseSigner(env: CloudflareEnv, jumpJwks: JumpJwks | undefin
 }
 
 async function readPrivateKeyPem(env: CloudflareEnv) {
-  return readBinding(env.UMAXICA_JUMP_PRIVATE_KEY_PEM ?? env.JUMP_PRIVATE_KEY_PEM);
+  const value = await readBinding(env.UMAXICA_JUMP_PRIVATE_KEY_PEM ?? env.JUMP_PRIVATE_KEY_PEM);
+  return normalizePem(value);
 }
 
 async function readPrivateKeyKid(env: CloudflareEnv) {
-  return readBinding(env.UMAXICA_JUMP_PRIVATE_KEY_KID ?? env.JUMP_PRIVATE_KEY_KID);
+  const value = await readBinding(env.UMAXICA_JUMP_PRIVATE_KEY_KID ?? env.JUMP_PRIVATE_KEY_KID);
+  return value?.trim() || null;
 }
 
 async function readJumpJwks(env: CloudflareEnv) {
@@ -147,7 +153,7 @@ async function readBinding(binding: SecretBinding | undefined) {
 }
 
 function readStringBindingSync(binding: SecretBinding | undefined) {
-  return typeof binding === 'string' ? binding : 'unloaded';
+  return typeof binding === 'string' ? binding.trim() || 'unloaded' : 'unloaded';
 }
 
 async function assertPrivateKeyMatchesPublicJwk(
@@ -175,4 +181,23 @@ function logSignerUnavailable(entry: {
 }) {
   // eslint-disable-next-line no-console -- safe signer diagnostics omit tokens and secret material.
   console.warn(JSON.stringify({ event: 'jump_signer_unavailable', ...entry }));
+}
+
+function logSignerConfigured(entry: { kid: string; public_jwks_kids: string[] }) {
+  // eslint-disable-next-line no-console -- safe signer diagnostics omit tokens and secret material.
+  console.info(
+    JSON.stringify({
+      event: 'jump_signer_configured',
+      signer_configured: true,
+      signer_kid: entry.kid,
+      private_key_imported: true,
+      public_jwks_kids: entry.public_jwks_kids,
+    }),
+  );
+}
+
+function normalizePem(value: string | null) {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  return trimmed.replaceAll('\\n', '\n');
 }
