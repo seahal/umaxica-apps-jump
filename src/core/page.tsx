@@ -3,7 +3,8 @@ import { raw } from 'hono/html';
 import { renderToString } from 'hono/jsx/dom/server';
 import { PRODUCTION_SERVICE_ORIGIN } from './types';
 import { messages, type Locale } from './i18n';
-import { FOOTER_TIME_INLINE_SCRIPT } from './security_headers';
+import type { NormalizedUrl } from './normalize_url';
+import { CUSHION_INLINE_SCRIPT } from './security_headers';
 
 type PageProps = {
   title: string;
@@ -73,8 +74,50 @@ export function renderHealthPage(
   });
 }
 
+export function renderErrorPage(locale: Locale = 'ja', now = new Date()) {
+  const t = messages[locale];
+  return renderDocument({
+    title: t.errorTitle,
+    locale,
+    now,
+    children: (
+      <main>
+        <h1>{t.errorHeading}</h1>
+        <p>{t.errorBody}</p>
+      </main>
+    ),
+  });
+}
+
+export function renderCushionPage(target: NormalizedUrl, locale: Locale = 'ja', now = new Date()) {
+  const t = messages[locale];
+  const displayUrl = truncate(target.href, 180);
+  return renderDocument({
+    title: t.cushionTitle,
+    locale,
+    now,
+    children: (
+      <>
+        <main>
+          <h1>{t.cushionTitle}</h1>
+          {target.hasNonAsciiHostname ? <p role="alert">{t.nonAsciiWarning}</p> : null}
+          <dl>
+            <dt>{t.host}</dt>
+            <dd>{target.hostname}</dd>
+            <dt>{t.url}</dt>
+            <dd>{displayUrl}</dd>
+          </dl>
+          <a href={target.href} rel="noopener noreferrer">
+            {t.continue}
+          </a>
+        </main>
+        <script>{raw(CUSHION_INLINE_SCRIPT)}</script>
+      </>
+    ),
+  });
+}
+
 function renderDocument({ title, locale, children, now = new Date() }: PageProps) {
-  const fallbackTime = now.toISOString();
   const document = (
     <html lang={locale}>
       <head>
@@ -88,13 +131,7 @@ function renderDocument({ title, locale, children, now = new Date() }: PageProps
           <a href="/">UMAXICA</a>
         </header>
         {children}
-        <footer>
-          © {now.getUTCFullYear()} UMAXICA{' '}
-          <time dateTime={fallbackTime} data-local-time="">
-            {fallbackTime}
-          </time>
-        </footer>
-        <script>{raw(FOOTER_TIME_INLINE_SCRIPT)}</script>
+        <footer>© {now.getUTCFullYear()} UMAXICA</footer>
       </body>
     </html>
   );
@@ -104,4 +141,8 @@ function renderDocument({ title, locale, children, now = new Date() }: PageProps
 function displayValue(value: string | boolean | null | undefined) {
   if (value === null || value === undefined) return '';
   return String(value);
+}
+
+function truncate(value: string, max: number) {
+  return value.length > max ? `${value.slice(0, max - 1)}...` : value;
 }
