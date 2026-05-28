@@ -481,6 +481,25 @@ describe('jump gateway routes', () => {
     }
   });
 
+  test('cloudflare worker accepts quoted escaped PKCS8 private key secret', async () => {
+    const setup = await cloudflareInternalRedirectFixture();
+    try {
+      const quotedEscapedPem = JSON.stringify(setup.jumpPrivatePem.replaceAll('\n', '\\n'));
+      const res = await fetchCloudflareWorker(`/?rt=${setup.inboundToken}`, {
+        UMAXICA_JUMP_PRIVATE_KEY_PEM: quotedEscapedPem,
+        UMAXICA_JUMP_PRIVATE_KEY_KID: 'cloudflare-active-2026-05',
+        UMAXICA_JUMP_PUBLIC_JWKS: JSON.stringify({ keys: [setup.jumpPublicJwk] }),
+      });
+
+      expect(res.status).toBe(302);
+      const location = res.headers.get('Location');
+      const returnedRt = new URL(location ?? '').searchParams.get('rt');
+      expect(decodeProtectedHeader(returnedRt ?? '').kid).toBe('cloudflare-active-2026-05');
+    } finally {
+      setup.restore();
+    }
+  });
+
   test('cloudflare worker reports version metadata id as health version', async () => {
     const res = await fetchCloudflareWorker('/health.json', {
       'UMAXICA-APPS-EDGE-JUMP-VERSION': {

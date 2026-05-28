@@ -259,7 +259,25 @@ function logSignerConfigured(entry: { kid: string; public_jwks_kids: string[] })
 }
 
 function normalizePem(value: string | null) {
-  const trimmed = value?.trim();
-  if (!trimmed) return null;
-  return trimmed.replaceAll('\\n', '\n');
+  let normalized = value?.trim();
+  if (!normalized) return null;
+
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    const quote = normalized[0];
+    if (quote === '"') {
+      try {
+        const parsed = JSON.parse(normalized) as unknown;
+        if (typeof parsed === 'string') normalized = parsed.trim();
+      } catch {
+        normalized = normalized.slice(1, -1).trim();
+      }
+    } else {
+      normalized = normalized.slice(1, -1).trim();
+    }
+  }
+
+  return normalized.replaceAll('\\r\\n', '\n').replaceAll('\\n', '\n').replaceAll('\r\n', '\n');
 }
