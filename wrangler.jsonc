@@ -24,18 +24,14 @@
       "secret_name": "UMAXICA_JUMP_PRIVATE_KEY_PEM"
     },
     {
-      "binding": "UMAXICA_JUMP_PRIVATE_KEY_KID",
-      "store_id": "eb74dec1a757471281526676fb6e6509",
-      "secret_name": "UMAXICA_JUMP_PRIVATE_KEY_KID"
-    },
-    {
       "binding": "UMAXICA_JUMP_PUBLIC_JWKS",
       "store_id": "eb74dec1a757471281526676fb6e6509",
       "secret_name": "UMAXICA_JUMP_PUBLIC_JWKS"
     }
   ],
   "vars": {
-    "UMAXICA_JUMP_ORIGIN": "https://jump.umaxica.net"
+    "UMAXICA_JUMP_ORIGIN": "https://jump.umaxica.net",
+    "UMAXICA_JUMP_PRIVATE_KEY_KID": "cloudflare-active-2026-05"
   },
   "workers_dev": false,
   "routes": [
