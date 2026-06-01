@@ -51,7 +51,7 @@ Expected health response includes:
 
 ```json
 {
-  "ok": true,
+  "status": "OK",
   "service": "jump",
   "version": "0.1.0",
   "edge": "fastly"
@@ -70,7 +70,7 @@ Expected health response includes:
 
 ```json
 {
-  "ok": true,
+  "status": "OK",
   "service": "jump",
   "version": "0.1.0",
   "edge": "cloudflare"
@@ -125,3 +125,9 @@ If Fastly is reachable inside the container but not from the host, confirm that 
 ## Future Libraries
 
 Future helper libraries are planned for Ruby, TypeScript, and Rust. The current implementation remains framework-neutral and intentionally avoids SDK abstractions until the protocol and operational model are well understood.
+
+## Acknowledgement
+
+- Secrets must stay in Rails credentials; do not commit plaintext secrets.
+- WebAuthn origins are controlled by `TRUSTED_ORIGINS`.
+- Public availability of this repository is not guaranteed permanently.

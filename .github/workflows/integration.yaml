@@ -116,6 +116,20 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run test:cov
 
+  e2e:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:e2e
+
   build-vite:
     runs-on: ubuntu-slim
     timeout-minutes: 15

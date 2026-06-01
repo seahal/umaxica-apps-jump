@@ -4,7 +4,7 @@ import { renderHealthPage } from './page';
 
 export function healthJson(runtime: RuntimeInfo, now = new Date()) {
   return {
-    ok: true,
+    status: 'OK',
     service: SERVICE.name,
     version: runtime.version === undefined ? SERVICE.version : runtime.version,
     edge: runtime.edge,
