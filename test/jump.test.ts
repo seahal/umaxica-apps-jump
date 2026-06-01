@@ -206,6 +206,11 @@ describe('jump gateway routes', () => {
       allowed_dst_internal: ['https://id.umaxica.app', 'https://www.umaxica.app'],
       allowed_dst_external: false,
     });
+    expect(umaxicaRegistry['https://www.umaxica.app']).toMatchObject({
+      jwks_uri: 'https://www.umaxica.app/.well-known/jwks.json',
+      allowed_dst_internal: ['https://www.umaxica.app', 'https://id.umaxica.app'],
+      allowed_dst_external: false,
+    });
     for (const issuer of Object.values(umaxicaRegistry)) {
       expect(issuer.iss).toBeTruthy();
       expect(issuer.jwks_uri).toBe(`${issuer.iss}/.well-known/jwks.json`);
@@ -280,7 +285,7 @@ describe('jump gateway routes', () => {
       headers: { Accept: 'application/json' },
     });
     expect(await json.json()).toMatchObject({
-      ok: true,
+      status: 'OK',
       service: 'jump',
       version: '0.1.0',
       edge: 'local',
@@ -290,7 +295,8 @@ describe('jump gateway routes', () => {
     expect(healthHtml).toContain('<meta name="robots" content="noindex,nofollow,noarchive"/>');
     expect(healthHtml).toContain('<title>UMAXICA Jump Gateway | Health status</title>');
     expect(healthHtml).toContain('<header><a href="/">UMAXICA</a></header>');
-    expect(healthHtml).toContain('<dt>ok</dt><dd>true</dd>');
+    expect(healthHtml).toContain('<h1>status</h1>');
+    expect(healthHtml).toContain('<dt>status</dt><dd>OK</dd>');
     expect(healthHtml).toContain('<dt>service</dt><dd>jump</dd>');
     expect(healthHtml).toContain('<dt>version</dt><dd>0.1.0</dd>');
     expect(healthHtml).toContain('<dt>edge</dt><dd>local</dd>');
@@ -387,7 +393,17 @@ describe('jump gateway routes', () => {
       UMAXICA_JUMP_PRIVATE_KEY_PEM: 'not a pkcs8 key',
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ ok: true, edge: 'cloudflare', version: null });
+    expect(await res.json()).toMatchObject({ status: 'OK', edge: 'cloudflare', version: null });
+  });
+
+  test('cloudflare worker health HTML includes cloudflare status data', async () => {
+    const res = await fetchCloudflareWorker('/health.html', {});
+
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('<h1>status</h1>');
+    expect(html).toContain('<dt>status</dt><dd>OK</dd>');
+    expect(html).toContain('<dt>edge</dt><dd>cloudflare</dd>');
   });
 
   test('cloudflare worker uses configured production origin for about output', async () => {
@@ -618,7 +634,7 @@ describe('jump gateway routes', () => {
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({
-      ok: true,
+      status: 'OK',
       edge: 'cloudflare',
       version: 'cloudflare-revision-123',
     });

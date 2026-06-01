@@ -3,7 +3,7 @@ packages:
 
 catalog:
   '@cloudflare/workers-types': 4.20260523.1
-  vite-plus: ^0.1.22
+  vite-plus: ^0.1.23
 
 ignoredBuiltDependencies:
   - '@sentry/cli'

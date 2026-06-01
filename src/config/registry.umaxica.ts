@@ -25,7 +25,7 @@ export const registry: IssuerRegistry = {
   'https://www.umaxica.app': {
     iss: 'https://www.umaxica.app',
     jwks_uri: 'https://www.umaxica.app/.well-known/jwks.json',
-    allowed_dst_internal: ['https://www.umaxica.app'],
+    allowed_dst_internal: ['https://www.umaxica.app', 'https://id.umaxica.app'],
     allowed_dst_external: false,
     revoked_kids: [],
   },
